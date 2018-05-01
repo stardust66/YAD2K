@@ -14,7 +14,7 @@ from collections import defaultdict
 import numpy as np
 from keras import backend as K
 from keras.layers import (Conv2D, GlobalAveragePooling2D, Input, Lambda,
-                          MaxPooling2D, Activation)
+                          MaxPooling2D, Activation, Dense, Flatten)
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.merge import concatenate
 from keras.layers.normalization import BatchNormalization
@@ -220,6 +220,38 @@ def _main(args):
                 raise ValueError('{} with params unsupported.'.format(section))
             all_layers.append(GlobalAveragePooling2D()(prev_layer))
             prev_layer = all_layers[-1]
+
+        elif section.startswith('connected'):
+            output = int(cfg_parser[section]['output'])
+            activation = cfg_parser[section]['activation']
+
+            # Set weights
+            # Darknet serializes fully connected layer weights as
+            # [bias, weights]
+            prev_layer_shape = K.int_shape(prev_layer)[1:]
+            prev_layer_size = np.prod(prev_layer_shape)
+
+            connected_bias = np.ndarray(
+                shape=(output,),
+                dtype='float32',
+                buffer=weights_file.read(output * 4))
+
+            connected_weights = np.ndarray(
+                shape=(prev_layer_size, output),
+                dtype='float32',
+                buffer=weights_file.read(output * prev_layer_size * 4))
+
+            weights = [connected_weights, connected_bias]
+
+            # Flatten if previous layer is not flat
+            if len(prev_layer_shape) > 1:
+                prev_layer = Flatten()(prev_layer)
+
+            fully_connected = Dense(output,
+                                    weights=weights)(prev_layer)
+            act_layer = get_activation(activation)(fully_connected)
+            prev_layer = act_layer
+            all_layers.append(act_layer)
 
         elif section.startswith('route'):
             ids = [int(i) for i in cfg_parser[section]['layers'].split(',')]
