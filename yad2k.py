@@ -14,7 +14,7 @@ from collections import defaultdict
 import numpy as np
 from keras import backend as K
 from keras.layers import (Conv2D, GlobalAveragePooling2D, Input, Lambda,
-                          MaxPooling2D)
+                          MaxPooling2D, Activation)
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.merge import concatenate
 from keras.layers.normalization import BatchNormalization
@@ -61,6 +61,23 @@ def unique_config_sections(config_file):
     output_stream.seek(0)
     return output_stream
 
+def get_activation(activation_type):
+    if activation_type == 'leaky':
+        return LeakyReLU(alpha=0.1)
+    elif activation_type == 'relu':
+        return Activation('relu')
+    elif activation_type == 'linear':
+        return Activation('linear')
+    elif activation_type == 'logistic':
+        return Activation('sigmoid')
+    elif activation_type == 'elu':
+        return Activation('elu')
+    elif activation_type == 'tanh':
+        return Activation('tanh')
+    else:
+        raise ValueError(
+            'Unknown activation function `{}`'.format(
+                activation_type))
 
 # %%
 def _main(args):
@@ -166,14 +183,8 @@ def _main(args):
                 conv_weights, conv_bias
             ]
 
-            # Handle activation.
+            # Add activation later
             act_fn = None
-            if activation == 'leaky':
-                pass  # Add advanced activation later.
-            elif activation != 'linear':
-                raise ValueError(
-                    'Unknown activation function `{}` in section {}'.format(
-                        activation, section))
 
             # Create Conv2D layer
             conv_layer = (Conv2D(
@@ -190,12 +201,9 @@ def _main(args):
                     weights=bn_weight_list))(conv_layer)
             prev_layer = conv_layer
 
-            if activation == 'linear':
-                all_layers.append(prev_layer)
-            elif activation == 'leaky':
-                act_layer = LeakyReLU(alpha=0.1)(prev_layer)
-                prev_layer = act_layer
-                all_layers.append(act_layer)
+            act_layer = get_activation(activation)(prev_layer)
+            prev_layer = act_layer
+            all_layers.append(act_layer)
 
         elif section.startswith('maxpool'):
             size = int(cfg_parser[section]['size'])
